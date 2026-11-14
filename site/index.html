@@ -4,22 +4,236 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#0d0d0d">
-<title>Claude FC dashboard</title>
+<title>Claude FC league dashboard</title>
 <link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=__V__">
 </head>
 <body>
-<header>
-  <div class="top">
-    <h1 id="league">Fantasy dashboard</h1>
-    <div class="stamp" id="stamp">Loading…</div>
-  </div>
-  <nav id="tabs" role="tablist" aria-label="Sections"></nav>
-</header>
-<main id="view"></main>
-<dialog id="sheet"><div id="sheetBody"></div></dialog>
-<div id="tip" role="status" hidden></div>
+<div class="fx">
+  <header class="fx-head" id="top">
+    <h1>Claude FC league dashboard</h1>
+    <p class="fx-asof"><span id="lgname">FRC 1360 Fantasy Basketball 2027</span> · head-to-head points · <span id="asof">loading…</span></p>
+  </header>
+
+  <nav class="fx-tabs" role="tablist" aria-label="Sections">
+    <button class="fx-tab" role="tab" data-tab="me">My team</button>
+    <button class="fx-tab" role="tab" data-tab="week">This week</button>
+    <button class="fx-tab" role="tab" data-tab="stream">Streaming</button>
+    <button class="fx-tab" role="tab" data-tab="trade">Trade machine</button>
+    <button class="fx-tab" role="tab" data-tab="standings">Standings</button>
+    <button class="fx-tab" role="tab" data-tab="teams">Teams</button>
+    <button class="fx-tab" role="tab" data-tab="players">Players</button>
+    <button class="fx-tab" role="tab" data-tab="moves">Transactions</button>
+    <button class="fx-tab" role="tab" data-tab="trends">Trends</button>
+  </nav>
+
+  <!-- ================= MY TEAM ================= -->
+  <section class="fx-page" id="me">
+    <p class="fx-intro">Everything about Claude FC in one place.</p>
+    <nav class="fx-jump" aria-label="On this page">
+      <button data-jump="me-overview">Overview</button><button data-jump="me-matchup">This week's matchup</button><button data-jump="me-roster-h">Roster</button><button data-jump="me-next">Next 7 days</button><button data-jump="me-trend-h">Season trend</button><button data-jump="me-season">Schedule &amp; moves</button>
+    </nav>
+    <div id="me-alert"></div>
+    <h2 class="fx-sec" id="me-overview">Overview</h2>
+    <div class="fx-card fx-wide fx-hero" id="me-hero"></div>
+
+    <h2 class="fx-sec" id="me-matchup">This week's matchup</h2>
+    <div class="fx-card fx-wide" id="me-match"></div>
+
+    <h2 class="fx-sec" id="me-roster-h">Roster</h2>
+    <div class="fx-card fx-wide">
+      <div class="fx-seg fx-seg-sm" role="group" aria-label="Roster view" data-view-for="me"><button type="button" data-view="cards">Cards</button><button type="button" data-view="sheet">Spreadsheet</button></div>
+      <p class="fx-note">Lineup-slot order. "Med 5" is the median of his last 5 games, so one big night doesn't move it. +/− is his season average minus ESPN's projection. "This wk" counts only points scored in a starting slot. Tap a player to open his chart and this week's games right here.</p>
+      <div class="fx-cards" id="me-cards"></div>
+      <div class="fx-tbl-wrap" id="me-roster"></div>
+    </div>
+
+    <h2 class="fx-sec" id="me-next">Next 7 days</h2>
+    <div class="fx-card fx-wide"><div class="fx-tbl-wrap fx-free" id="me-lineup"></div></div>
+
+    <h2 class="fx-sec" id="me-trend-h">Season trend</h2>
+    <div class="fx-card fx-wide" id="me-trend"></div>
+
+    <h2 class="fx-sec" id="me-season">Schedule &amp; moves</h2>
+    <div class="fx-grid">
+      <div class="fx-card"><h3 class="fx-ct">Matchup schedule</h3><div class="fx-tbl-wrap" id="me-sched"></div></div>
+      <div class="fx-card"><h3 class="fx-ct">My trades &amp; moves</h3><div class="fx-tbl-wrap" id="me-moves"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= THIS WEEK ================= -->
+  <section class="fx-page" id="week" hidden>
+    <p class="fx-intro" id="wk-intro">Every matchup in the current week.</p>
+    <nav class="fx-jump" aria-label="On this page">
+      <button data-jump="wk-board-h">Scoreboard</button><button data-jump="wk-match-h">Matchup detail</button><button data-jump="wk-leader-h">Weekly leaderboard</button><button data-jump="wk-games-h">Games left</button>
+    </nav>
+    <h2 class="fx-sec" id="wk-board-h">Scoreboard</h2>
+    <p class="fx-note">Tap a matchup to open it below.</p>
+    <div class="fx-board" id="board"></div>
+
+    <h2 class="fx-sec" id="wk-match-h">Matchup detail</h2>
+    <div class="fx-card fx-wide" id="lg-match"></div>
+
+    <h2 class="fx-sec" id="wk-leader-h">Weekly leaderboard</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Every team ranked by points this week. "+/− vs proj" is points scored minus the projection on days already played; "vs full strength" compares with a fully healthy roster. Projected finals add each team's best legal lineup for every day left, from players who aren't out or on IR (day-to-day players count at 75%).</p>
+      <div class="fx-tbl-wrap" id="power-week"></div>
+    </div>
+
+    <h2 class="fx-sec" id="wk-games-h">Games left</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Healthy, non-IR player-games left this week and next. "Starts" caps each day at the 10 lineup spots, filled by position.</p>
+      <div class="fx-tbl-wrap" id="gamecount"></div>
+    </div>
+  </section>
+
+  <!-- ================= STREAMING ================= -->
+  <section class="fx-page" id="stream" hidden>
+    <p class="fx-intro">Where your lineup has holes, who fills them best, and how your past pickups and drops worked out.</p>
+    <div id="st-alert"></div>
+    <div class="fx-card fx-wide fx-hero" id="st-status"></div>
+    <nav class="fx-jump" aria-label="On this page">
+      <button data-jump="st-days-h">Open spots by day</button><button data-jump="st-best-h">Best pickups</button><button data-jump="st-drop-h">Who to drop</button><button data-jump="st-mine-h">On my roster</button><button data-jump="st-cut-h">Dropped</button>
+    </nav>
+
+    <h2 class="fx-sec" id="st-days-h">Open spots by day</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Your healthy, non-IR players with a game each day, and the starting spots left empty after filling the lineup by position. Red days are where a pickup adds the most.</p>
+      <div class="fx-tbl-wrap" id="st-days"></div>
+    </div>
+
+    <h2 class="fx-sec" id="st-best-h">Best pickups</h2>
+    <div class="fx-card fx-wide">
+      <div class="fx-ctl" id="st-ctl"></div>
+      <p class="fx-note" id="st-best-note"></p>
+      <div class="fx-tbl-wrap" id="st-best"></div>
+    </div>
+
+    <h2 class="fx-sec" id="st-drop-h">Who to drop</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Your players ranked by the points they'd actually add to your best lineup from today through the end of next week, lowest first. Own % in amber (50%+) means another manager will likely grab him. A dropped player sits on waivers for a day.</p>
+      <div class="fx-tbl-wrap" id="st-drop"></div>
+    </div>
+
+    <h2 class="fx-sec" id="st-mine-h">Streamers on my roster</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Players you picked up who are still on Claude FC. "For you" is the points he's scored in your starting lineup since you added him (starts in brackets; covers the last two weeks). Last 5 runs oldest to newest, points on top and minutes underneath: green 35+, red under 20. A green line marks when you added him, a red line when you dropped him.</p>
+      <div class="fx-tbl-wrap" id="st-mine"></div>
+    </div>
+
+    <h2 class="fx-sec" id="st-cut-h">Dropped</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Everyone you've cut, newest first. "Avg since" is how he's played after you dropped him (games in brackets). "Swap edge" is the player you added minus him since the swap: positive means the swap is working.</p>
+      <div class="fx-tbl-wrap" id="st-cut"></div>
+    </div>
+  </section>
+
+  <!-- ================= TRADE MACHINE ================= -->
+  <section class="fx-page" id="trade" hidden>
+    <p class="fx-intro">Pick players on both sides to see how each team's best legal lineup changes. Whether the other manager would accept is a judgment call, so ask Claude for that part.</p>
+    <div class="fx-ctl"><label>Trade with <select id="tr-team" aria-label="Trade partner"></select></label><button type="button" class="fx-btn" id="tr-clear">Clear</button></div>
+    <div class="fx-card fx-wide" id="tr-res"></div>
+    <div class="fx-grid fx-grid-2">
+      <div class="fx-card"><h3 class="fx-ct" id="tr-a-h">You give</h3><div id="tr-a"></div></div>
+      <div class="fx-card"><h3 class="fx-ct" id="tr-b-h">You get</h3><div id="tr-b"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= STANDINGS ================= -->
+  <section class="fx-page" id="standings" hidden>
+    <p class="fx-intro">The season so far, and where it's heading.</p>
+    <nav class="fx-jump" aria-label="On this page">
+      <button data-jump="st-power-h">Power rankings &amp; odds</button><button data-jump="st-season-h">Standings &amp; season leaderboard</button><button data-jump="st-luck-h">Luck</button>
+    </nav>
+    <h2 class="fx-sec" id="st-power-h">Power rankings &amp; odds</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Ranked by rating: half each team's weekly scores so far, half its roster strength. Roster strength is the best legal lineup per game, with today's injuries and with everyone healthy. Odds come from 10,000 simulated seasons; the top <span id="po-n">4</span> make the playoffs.</p>
+      <div class="fx-tbl-wrap" id="power"></div>
+    </div>
+    <h2 class="fx-sec" id="st-season-h">Standings &amp; season leaderboard</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Ranked by record, then total points. One column per week; this week's column is live. All-play is the record a team would have playing everyone every week; schedule luck is real wins minus that.</p>
+      <div class="fx-tbl-wrap" id="power-season"></div>
+    </div>
+    <h2 class="fx-sec" id="st-luck-h">Luck: +/− vs a full-strength roster</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Each finished day, every team's actual points minus what its full roster should have scored if everyone were healthy: the best legal lineup from all players on the roster that day (IR and injured included) whose NBA team played, at ESPN's projected points per game. Injuries, rest days, cold nights and benching mistakes count against you; hot nights count for you. Projections run high for everyone, so "+/− vs league avg" is the column that shows real luck.</p>
+      <div class="fx-ctl"><label>Show <select id="luck-week" aria-label="Week"></select></label></div>
+      <div class="fx-tbl-wrap" id="luck"></div>
+    </div>
+  </section>
+
+  <!-- ================= TEAMS ================= -->
+  <section class="fx-page" id="teams" hidden>
+    <p class="fx-intro">Any team in the league, laid out the same way as My team.</p>
+    <div class="fx-ctl"><label>Team <select id="team-sel" aria-label="Team"></select></label></div>
+    <nav class="fx-jump" aria-label="On this page">
+      <button data-jump="tm-overview">Overview</button><button data-jump="tm-match-h">This week's matchup</button><button data-jump="tm-trend-h">Season trend</button><button data-jump="tm-roster-h">Roster</button><button data-jump="tm-next">Next 7 days</button><button data-jump="tm-season">Schedule &amp; moves</button>
+    </nav>
+    <h2 class="fx-sec" id="tm-overview">Overview</h2>
+    <div class="fx-card fx-wide fx-hero" id="tm-hero"></div>
+    <h2 class="fx-sec" id="tm-match-h">This week's matchup</h2>
+    <div class="fx-card fx-wide" id="tm-match"></div>
+    <h2 class="fx-sec" id="tm-trend-h">Season trend</h2>
+    <div class="fx-card fx-wide" id="tm-trend"></div>
+    <h2 class="fx-sec" id="tm-roster-h">Roster</h2>
+    <div class="fx-card fx-wide"><div class="fx-seg fx-seg-sm" role="group" aria-label="Roster view" data-view-for="tm"><button type="button" data-view="cards">Cards</button><button type="button" data-view="sheet">Spreadsheet</button></div><div class="fx-cards" id="tm-cards"></div><div class="fx-tbl-wrap" id="tm-roster"></div></div>
+    <h2 class="fx-sec" id="tm-next">Next 7 days</h2>
+    <div class="fx-card fx-wide"><div class="fx-tbl-wrap fx-free" id="tm-lineup"></div></div>
+    <h2 class="fx-sec" id="tm-season">Schedule &amp; moves</h2>
+    <div class="fx-grid">
+      <div class="fx-card"><h3 class="fx-ct">Matchup schedule</h3><div class="fx-tbl-wrap" id="tm-sched"></div></div>
+      <div class="fx-card"><h3 class="fx-ct">Trades &amp; moves</h3><div class="fx-tbl-wrap" id="tm-moves"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= PLAYERS ================= -->
+  <section class="fx-page" id="players" hidden>
+    <p class="fx-intro">Every rostered player plus the top 60 free agents. The filters apply to the whole page.</p>
+    <div class="fx-ctl">
+      <label>Fantasy team <select id="pl-owner" aria-label="Fantasy team"></select></label>
+      <label>Position <select id="pl-pos" aria-label="Position"><option value="">All</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select></label>
+      <label>Search <input id="pl-q" type="search" placeholder="player or team" aria-label="Search players"></label>
+    </div>
+    <nav class="fx-jump" aria-label="On this page">
+      <button data-jump="pl-top-h">Top players</button><button data-jump="pl-proj-h">Beating &amp; missing projections</button>
+    </nav>
+    <h2 class="fx-sec" id="pl-top-h">Top players</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Ranked by total fantasy points (tap a header to re-sort). Tap any player to open his game-by-game chart under his row; tap again to close. The dated columns are each game's +/− against ESPN's projection over the last 7 days.</p>
+      <p class="fx-note" id="pl-count"></p>
+      <div class="fx-tbl-wrap fx-tall" id="rk-wrap"><table id="rankings" class="fx-sortable"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <h2 class="fx-sec" id="pl-proj-h">Beating &amp; missing projections</h2>
+    <div class="fx-card fx-wide">
+      <p class="fx-note">Season average minus ESPN's projected average, players with at least 2 games.</p>
+      <div class="fx-hc"><div><h3>Most above projection</h3><div id="hot"></div></div><div><h3>Most below projection</h3><div id="cold"></div></div></div>
+    </div>
+  </section>
+
+  <!-- ================= TRANSACTIONS ================= -->
+  <section class="fx-page" id="moves" hidden>
+    <p class="fx-intro">Every completed trade, add and drop in the league, newest first.</p>
+    <div class="fx-ctl">
+      <label>Show <select id="move-kind" aria-label="Kind of move"><option value="all">Everything</option><option value="Trade">Trades only</option><option value="Add/Drop">Adds &amp; drops only</option></select></label>
+      <label>Search <input id="move-q" type="search" placeholder="player or team" aria-label="Search moves"></label>
+    </div>
+    <div class="fx-card fx-wide"><div class="fx-tbl-wrap fx-tall" id="movelist"></div></div>
+  </section>
+
+  <!-- ================= TRENDS ================= -->
+  <section class="fx-page" id="trends" hidden>
+    <p class="fx-intro">How the league has moved over the season. Playoff odds, rating and rank gain one point a day, starting Nov 14.</p>
+    <div class="fx-ctl" id="tr-ctl"></div>
+    <div class="fx-card fx-wide" id="trend-chart"></div>
+    <h2 class="fx-sec">Free agents gaining owners</h2>
+    <div class="fx-card fx-wide"><p class="fx-note">Change in % owned across ESPN over the last few days, free agents only.</p><div class="fx-tbl-wrap" id="risers"></div></div>
+  </section>
+</div>
+<script src="d3.min.js"></script>
 <script type="module" src="app.js?v=__V__"></script>
 </body>
 </html>
