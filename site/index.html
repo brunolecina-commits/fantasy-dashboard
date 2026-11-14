@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Fantasy dashboard</title>
+<style>
+  :root { --bg:#f6f5f1; --card:#fff; --ink:#1c1b19; --mute:#6f6c66; --line:#e4e1da; --accent:#b4532a; --good:#1f7a4d; --bad:#b3372f; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161513; --card:#201f1c; --ink:#eeebe4; --mute:#9d998f; --line:#33312c; --accent:#e08a5b; --good:#5cc08c; --bad:#e8766d; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 14px 60px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 28px 0 10px; }
+  .stamp { color: var(--mute); font-size: 13px; margin-top: 4px; }
+  .stale { color: var(--bad); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .mu { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: baseline; }
+  .mu .pts { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .mu .lead { color: var(--good); }
+  .mine { outline: 2px solid var(--accent); }
+  .wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; color: var(--mute); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  td.n, th.n { text-align: right; }
+  tr.me td { font-weight: 600; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--mute); margin-left: 6px; }
+  .tag.out { color: var(--bad); border-color: var(--bad); }
+  .dim { color: var(--mute); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="league">Fantasy dashboard</h1>
+  <div class="stamp" id="stamp">Loading…</div>
+  <h2 id="wk">This week</h2>
+  <div class="grid" id="matchups"></div>
+  <h2>Standings</h2>
+  <div class="card wrap"><table id="standings"></table></div>
+  <h2 id="rosterTitle">My roster</h2>
+  <div class="card wrap"><table id="roster"></table></div>
+</main>
+<script>
+const get = n => fetch("data/" + n + ".json", { cache: "no-store" }).then(r => { if (!r.ok) throw new Error(n); return r.json(); });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = n => n == null ? "–" : Math.round(n).toLocaleString();
+(async () => {
+  let meta, teams, matchups, players, sched;
+  try { [meta, teams, matchups, players, sched] = await Promise.all(["meta", "teams", "matchups", "players", "nba_schedule"].map(get)); }
+  catch (e) { document.getElementById("stamp").textContent = "No data yet. The first update hasn't run."; return; }
+  const m = meta[0], T = Object.fromEntries(teams.map(t => [t.team_id, t]));
+  document.getElementById("league").textContent = m.league;
+  const ageMin = Math.round((Date.now() - new Date(m.pulled_at)) / 60000);
+  const age = ageMin < 60 ? ageMin + " min ago" : ageMin < 1440 ? Math.round(ageMin / 60) + " h ago" : Math.round(ageMin / 1440) + " d ago";
+  const stamp = document.getElementById("stamp");
+  stamp.innerHTML = "Updated " + esc(m.pulled_label) + " (" + age + ")" + (ageMin > 180 ? ' <span class="stale">Updates look stuck.</span>' : "");
+  document.getElementById("wk").textContent = "Week " + m.week + " matchups";
+  document.getElementById("matchups").innerHTML = matchups.filter(x => x.week === m.week && x.home).map(x => {
+    const a = T[x.team_id], b = T[x.opp_id], mine = x.team_id === m.my_team_id || x.opp_id === m.my_team_id;
+    const row = (t, p, o) => `<div>${esc(t.team)} <span class="dim">${esc(t.manager)}</span></div><div class="pts ${p > o ? "lead" : ""}">${fmt(p)}</div>`;
+    return `<div class="card mu ${mine ? "mine" : ""}">${row(a, x.pts, x.opp_pts)}${row(b, x.opp_pts, x.pts)}</div>`;
+  }).join("");
+  const st = teams.slice().sort((a, b) => b.wins - a.wins || b.points_for - a.points_for);
+  document.getElementById("standings").innerHTML = "<tr><th>#</th><th>Team</th><th>Manager</th><th class=n>W</th><th class=n>L</th><th class=n>Points for</th></tr>" +
+    st.map((t, i) => `<tr class="${t.team_id === m.my_team_id ? "me" : ""}"><td>${i + 1}</td><td>${esc(t.team)}</td><td>${esc(t.manager)}</td><td class=n>${t.wins}</td><td class=n>${t.losses}</td><td class=n>${fmt(t.points_for)}</td></tr>`).join("");
+  const today = {}; sched.filter(g => g.day === m.today_day).forEach(g => today[g.nba_team] = (g.home ? "vs " : "@ ") + g.opp);
+  const left = {}; sched.filter(g => g.day >= m.today_day && g.day <= m.week_end_day).forEach(g => left[g.nba_team] = (left[g.nba_team] || 0) + 1);
+  const order = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL", "BE", "IR"];
+  const mine = players.filter(p => p.team_id === m.my_team_id).sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot) || b.avg - a.avg);
+  document.getElementById("rosterTitle").textContent = (T[m.my_team_id]?.team || "My team") + " roster";
+  document.getElementById("roster").innerHTML = "<tr><th>Slot</th><th>Player</th><th>Pos</th><th>Today</th><th class=n>Games left</th><th class=n>Avg</th><th class=n>Proj</th></tr>" +
+    mine.map(p => `<tr><td>${esc(p.slot)}</td><td>${esc(p.player)} <span class="dim">${esc(p.nba_team)}</span>${p.status !== "Healthy" ? `<span class="tag ${p.status === "OUT" ? "out" : ""}">${esc(p.status)}</span>` : ""}</td><td>${esc(p.positions)}</td><td>${esc(today[p.nba_team] || "–")}</td><td class=n>${left[p.nba_team] || 0}</td><td class=n>${p.avg.toFixed(1)}</td><td class=n>${p.proj_avg.toFixed(1)}</td></tr>`).join("");
+})();
+</script>
+</body>
+</html>
