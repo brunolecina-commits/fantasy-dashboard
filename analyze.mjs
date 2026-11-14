@@ -1,7 +1,7 @@
 // Reads the built data files, writes derived.json (projections, odds, luck) and keeps the daily history.
 // Usage: node analyze.mjs site/data history
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { bestLineup, expected, availability, avgOf, phi } from "./site/lib.js";
+import { bestLineup, expected, availability, avgOf, median, phi } from "./site/lib.js";
 
 const [dataDir, histDir, rawPath] = [process.argv[2], process.argv[3], process.argv[4]];
 const load = n => JSON.parse(readFileSync(`${dataDir}/${n}.json`, "utf8"));
@@ -14,7 +14,7 @@ const poolBy = Object.fromEntries(pool.map(p => [p.player_id, p]));
 const ev = {};
 const evOf = p => {
   const g = (gamesBy[p.player_id] || []).sort((a, b) => a.day - b.day).slice(-5).map(x => x.fpts);
-  const l5 = avgOf(g);
+  const l5 = median(g);
   return { ev: +expected(p, l5).toFixed(1), l5: l5 == null ? null : +l5.toFixed(1) };
 };
 pool.forEach(p => ev[p.player_id] = evOf(p));
@@ -23,12 +23,13 @@ players.forEach(p => { if (!ev[p.player_id]) ev[p.player_id] = evOf(p); });
 const playsOn = {}; sched.forEach(g => (playsOn[g.day] = playsOn[g.day] || new Set()).add(g.nba_team));
 const roster = id => players.filter(p => p.team_id === id);
 const asItem = (p, w = 1) => ({ pos: p.positions.split(","), v: ev[p.player_id].ev * w });
+const nowW = p => p.slot === "IR" ? 0 : availability(p.status); // players on IR can't score until they are moved back
 const ids = teams.map(t => t.team_id), T = Object.fromEntries(teams.map(t => [t.team_id, t]));
 
 // roster strength per game: healthy right now, and at full strength
 const strength = {};
 for (const id of ids) {
-  const now = bestLineup(roster(id).map(p => asItem(p, availability(p.status)))).total;
+  const now = bestLineup(roster(id).map(p => asItem(p, nowW(p)))).total;
   const full = bestLineup(roster(id).map(p => asItem(p))).total;
   strength[id] = { now, full, mix: 0.5 * now + 0.5 * full };
 }
@@ -52,7 +53,7 @@ for (const id of ids) {
   let rem = 0; weekProj[id] = {};
   for (let d = meta.today_day; d <= meta.week_end_day; d++) {
     const on = playsOn[d] || new Set();
-    const p = bestLineup(roster(id).filter(x => on.has(x.nba_team)).map(x => asItem(x, availability(x.status)))).total;
+    const p = bestLineup(roster(id).filter(x => on.has(x.nba_team)).map(x => asItem(x, nowW(x)))).total;
     const left = d === meta.today_day ? Math.max(0, p - (dayPts[id + ":" + d] || 0)) : p;
     weekProj[id][d] = Math.round(p); rem += left;
   }

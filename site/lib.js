@@ -21,8 +21,10 @@ export function bestLineup(list) {
 
 export const avgOf = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 
-// Expected fantasy points per game: season average blended with the last 5 games,
-// leaning on ESPN's projection while the sample is small.
+export const median = a => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+// Expected fantasy points per game: season average blended with the MEDIAN of the last 5 games
+// (so one big night doesn't drive it), leaning on ESPN's projection while the sample is small.
 export function expected(p, last5) {
   const gp = p.games_played || 0, avg = p.avg || 0, proj = p.proj_avg || avg;
   const w = Math.min(gp, 10) / 12;
