@@ -40,7 +40,12 @@ const bestSum = (list) => { const s = list.slice().sort((a, b) => b.v - a.v), m 
   const place = (i, seen) => { for (let k = 0; k < SL.length; k++) { if (seen[k] || !can(i, k)) continue; seen[k] = true; if (m[k] < 0 || place(m[k], seen)) { m[k] = i; return true; } } return false; };
   s.forEach((p, i) => { if (n < SL.length && place(i, [])) { n++; tot += p.v; } }); return Math.round(tot); };
 const tproj = [], ex = {}; // ex: players who were on a roster on a logged day but are not rostered now
+// Settled days older than the game-log window are read from the saved history instead of being fetched again.
+const { existsSync, readFileSync } = await import("node:fs");
+const saved = existsSync("history/tproj.json") ? JSON.parse(readFileSync("history/tproj.json", "utf8")) : [];
+const savedBy = {}; saved.forEach(x => (savedBy[x[0]] = savedBy[x[0]] || []).push(x));
 for (let d = 1; d <= sp; d++) {
+  if (d < wk1 && d < sp - 1 && (savedBy[d] || []).length === L.teams.length) { tproj.push(...savedBy[d]); continue; }
   const D = await j(`${base}?view=mRoster&scoringPeriodId=${d}`);
   for (const t of D.teams) { const cand = [];
     for (const e of t.roster.entries) {
