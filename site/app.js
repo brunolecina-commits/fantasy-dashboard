@@ -1,6 +1,6 @@
 import { bestLineup, expected, availability, avgOf, ADD_LIMIT, ROSTER_MAX, CENTER_MAX } from "./lib.js";
 
-const FILES = ["meta", "teams", "matchups", "daily", "players", "nba_schedule", "activity", "player_pool", "player_games", "derived", "history"];
+const FILES = ["meta", "teams", "matchups", "daily", "players", "nba_schedule", "activity", "player_pool", "player_games", "derived", "history", "game_log"];
 const TABS = [["team", "My team"], ["week", "This week"], ["stream", "Streaming"], ["trade", "Trade machine"], ["standings", "Standings"], ["teams", "Teams"], ["players", "Players"], ["moves", "Moves"], ["trends", "Trends"]];
 const SLOT_ORDER = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL", "BE", "IR"];
 const $ = s => document.querySelector(s);
@@ -10,10 +10,11 @@ const n1 = x => x == null || isNaN(x) ? "–" : (+x).toFixed(1);
 const pct = x => x == null ? "–" : x > 0 && x < 0.01 ? "<1%" : x > 0.99 && x < 1 ? ">99%" : Math.round(x * 100) + "%";
 const signed = (x, f = n0) => (x > 0 ? "+" : x < 0 ? "−" : "") + f(Math.abs(x));
 const dayLabel = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", day: "numeric" });
+const wd = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
 const isoOf = day => { const d = new Date("2026-10-20T12:00:00Z"); d.setUTCDate(d.getUTCDate() + day - 1); return d.toISOString().slice(0, 10); };
 
 let S = null; // loaded data + lookups
-const ui = { tab: "team", open: new Set(), sort: {}, team: null, win: "this", today: null, tradeB: null, selA: new Set(), selB: new Set(), q: "", pf: "all", moveTeam: 0, metric: "weekly", hi: 0 };
+const ui = { rv: "cards", tab: "team", open: new Set(), sort: {}, team: null, win: "this", today: null, tradeB: null, selA: new Set(), selB: new Set(), q: "", pf: "all", moveTeam: 0, metric: "weekly", hi: 0 };
 
 async function load() {
   const got = await Promise.all(FILES.map(n => fetch(`data/${n}.json`, { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null)));
@@ -33,7 +34,8 @@ async function load() {
   const sched = {}; d.nba_schedule.forEach(g => (sched[g.nba_team] = sched[g.nba_team] || []).push(g));
   const D = Object.fromEntries((d.derived?.teams || []).map(t => [t.team_id, t]));
   const dayPts = {}; d.daily.forEach(x => dayPts[x.team_id + ":" + x.day] = x);
-  S = { ...d, m, T, P, games, sched, D, dayPts, me: m.my_team_id, hist: d.history || { days: [], owned: {} } };
+  const wk = {}; (d.game_log || []).forEach(g => { if (g.day >= m.week_start_day && g.day <= m.week_end_day && !["BE", "IR"].includes(g.slot)) wk[g.player_id + ":" + g.team_id] = (wk[g.player_id + ":" + g.team_id] || 0) + g.pts; });
+  S = { ...d, m, T, P, games, sched, D, dayPts, wk, me: m.my_team_id, hist: d.history || { days: [], owned: {} } };
   S.roster = id => Object.values(P).filter(p => p.team_id === id && p.slot);
   S.plays = (p, day) => (sched[p.nba_team] || []).find(g => g.day === day);
   ui.team ??= S.me; ui.tradeB ??= d.teams.find(t => t.team_id !== S.me).team_id;
@@ -83,13 +85,77 @@ function rosterTable(id) {
   return `<div class="wrap"><table class="t pin"><thead><tr><th>Player</th><th>Today</th><th class="n" title="Games left this week">Left</th><th class="n" title="Season average">Avg</th><th class="n" title="Average of the last 5 games">L5</th><th class="n" title="Expected points per game">Exp</th></tr></thead><tbody>${sec("Starters", rs.filter(p => !["BE", "IR"].includes(p.slot)))}${sec("Bench", rs.filter(p => p.slot === "BE"))}${sec("Injured reserve", rs.filter(p => p.slot === "IR"))}</tbody></table></div>`;
 }
 
+// NBA team colours (primary, secondary) for the player cards
+const NBA = { ATL: ["#c8102e", "#fdb927"], BOS: ["#007a33", "#0b3d20"], BKN: ["#1d1d1d", "#555"], CHA: ["#1d1160", "#00788c"], CHI: ["#ce1141", "#1d1d1d"], CLE: ["#6f263d", "#ffb81c"], DAL: ["#00538c", "#002b5e"], DEN: ["#0e2240", "#fec524"], DET: ["#c8102e", "#1d42ba"], GS: ["#1d428a", "#ffc72c"], HOU: ["#ce1141", "#1d1d1d"], IND: ["#002d62", "#fdbb30"], LAC: ["#1d428a", "#c8102e"], LAL: ["#552583", "#fdb927"], MEM: ["#5d76a9", "#12173f"], MIA: ["#98002e", "#1d1d1d"], MIL: ["#00471b", "#9c8e62"], MIN: ["#0c2340", "#236192"], NO: ["#0c2340", "#c8102e"], NY: ["#006bb6", "#f58426"], OKC: ["#007ac1", "#ef3b24"], ORL: ["#0077c0", "#1d1d1d"], PHI: ["#006bb6", "#ed174c"], PHX: ["#1d1160", "#e56020"], POR: ["#e03a3e", "#1d1d1d"], SAC: ["#5a2d81", "#63727a"], SA: ["#1d1d1d", "#8a8d8f"], TOR: ["#ce1141", "#1d1d1d"], UTAH: ["#3e2680", "#f9a01b"], WSH: ["#002b5c", "#e31837"] };
+const grad = t => { const c = NBA[t] || ["#444", "#777"]; return `linear-gradient(105deg, ${c[0]} 0%, ${c[0]} 45%, ${c[1]} 130%)`; };
+const initials = n => n.replace(/[^A-Za-z' -]/g, "").split(/[ -]+/).filter(w => !/^(jr|sr|ii|iii|iv)$/i.test(w)).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+const nextGames = (p, n = 2) => (S.sched[p.nba_team] || []).filter(g => g.day >= S.m.today_day).slice(0, n).map(g => `${g.day === S.m.today_day ? "Today" : wd(g.date)} ${g.home ? "vs " : "@"}${g.opp}`).join(" · ") || "No games soon";
+const weekSpan = w => { const a = w === 1 ? 1 : 7 * w - 7, b = w === 1 ? 6 : 7 * w - 1, D = x => new Date(isoOf(x) + "T12:00:00"), f = x => D(x).toLocaleDateString("en-US", { month: "short", day: "numeric" }); return `${f(a)}–${D(a).getMonth() === D(b).getMonth() ? D(b).getDate() : f(b)}`; };
+
+function weekCells(a, b) { // per day: points scored and projected remainder, for both teams
+  const m = S.m, rows = [];
+  for (let d = m.week_start_day; d <= m.week_end_day; d++) {
+    const cell = id => { const act = d <= m.today_day ? (S.dayPts[id + ":" + d]?.points ?? 0) : 0, pr = d >= m.today_day ? (S.D[id]?.week_proj?.[d] ?? 0) : 0; return { act, extra: Math.max(0, pr - act) }; };
+    rows.push({ d, a: cell(a), b: cell(b) });
+  }
+  return rows;
+}
+function weekBars(a, b) {
+  const m = S.m, rows = weekCells(a, b), max = Math.max(1, ...rows.flatMap(r => [r.a.act + r.a.extra, r.b.act + r.b.extra]));
+  const col = (c, cls) => `<div class="vb">${c.extra ? `<i class="${cls} p" style="height:${c.extra / max * 100}%"></i>` : ""}${c.act ? `<i class="${cls}" style="height:${c.act / max * 100}%"></i>` : ""}</div>`;
+  return `<div class="vbars">${rows.map(r => `<div class="vday ${r.d === m.today_day ? "today" : ""}" data-tip="${h(dayLabel(isoOf(r.d)))}: ${h(S.T[a].abbrev)} ${n0(r.a.act)}${r.a.extra ? " (proj " + n0(r.a.act + r.a.extra) + ")" : ""}, ${h(S.T[b].abbrev)} ${n0(r.b.act)}${r.b.extra ? " (proj " + n0(r.b.act + r.b.extra) + ")" : ""}"><div class="vpair">${col(r.a, "me")}${col(r.b, "opp")}</div><span>${r.d === m.today_day ? "Today" : h(wd(isoOf(r.d)))}</span></div>`).join("")}</div>`;
+}
+function runningTotal(a, b) {
+  const m = S.m, rows = weekCells(a, b), W = 380, H = 190, L = 38, R = 46, Tp = 10, B = 22, n = rows.length;
+  const cum = k => { let act = 0, all = 0; return rows.map(r => { act += r[k].act; all += r[k].act + r[k].extra; return { act, all, d: r.d }; }); };
+  const A = cum("a"), Bc = cum("b"), max = Math.max(A.at(-1).all, Bc.at(-1).all, 1) * 1.06;
+  const x = i => L + (i + 1) / n * (W - L - R), y = v => Tp + (1 - v / max) * (H - Tp - B), ti = Math.min(n - 1, Math.max(0, m.today_day - m.week_start_day));
+  const line = (c, cls) => { const solid = [`M${L},${y(0)}`].concat(c.filter(p => p.d <= m.today_day).map((p, i) => `L${x(i)},${y(p.act)}`)).join(""), dash = c.filter(p => p.d >= m.today_day).map((p, i) => `${i ? "L" : `M${x(ti)},${y(c[ti].act)}L`}${x(ti + i)},${y(p.all)}`).join("");
+    return `<path d="${dash}" fill="none" stroke="var(--${cls})" stroke-width="2" stroke-dasharray="3 4" stroke-linecap="round"/><path d="${solid}" fill="none" stroke="var(--${cls})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${x(ti)}" cy="${y(c[ti].act)}" r="4" fill="var(--${cls})" stroke="var(--surface)" stroke-width="2"/>`; };
+  const ea = y(A.at(-1).all), eb = y(Bc.at(-1).all), off = Math.abs(ea - eb) < 13 ? (ea < eb ? -7 : 7) : 0;
+  const ticks = [0, 1, 2, 3].map(i => max / 1.06 * i / 3);
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Running total for the week, both teams">${ticks.map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${n0(t)}</text>`).join("")}${rows.map((r, i) => `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" ${r.d === m.today_day ? `class="lab"` : ""}>${r.d === m.today_day ? "Today" : h(wd(isoOf(r.d)))}</text>`).join("")}${line(Bc, "opp")}${line(A, "me")}<text class="lab" x="${W - R + 6}" y="${ea + 4 + off}">${n0(A.at(-1).all)}</text><text class="lab" x="${W - R + 6}" y="${eb + 4 - off}">${n0(Bc.at(-1).all)}</text>${rows.map((r, i) => `<rect x="${x(i) - (W - L - R) / n / 2}" y="${Tp}" width="${(W - L - R) / n}" height="${H - Tp - B}" fill="transparent" data-tip="${h(dayLabel(isoOf(r.d)))}: ${h(S.T[a].abbrev)} ${n0(r.d <= m.today_day ? A[i].act : A[i].all)}, ${h(S.T[b].abbrev)} ${n0(r.d <= m.today_day ? Bc[i].act : Bc[i].all)}${r.d > m.today_day ? " (projected)" : ""}"/>`).join("")}</svg></div>`;
+}
+
+function rosterCards(id) {
+  const rs = S.roster(id).sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot) || b.ev - a.ev);
+  const card = p => { const d = p.avg - (p.proj_avg || p.avg), wk = S.wk[p.player_id + ":" + id] || 0; return `<button class="pcard" data-p="${p.player_id}"><div class="phead" style="background:${grad(p.nba_team)}"><span class="av">${h(initials(p.player))}</span><span class="pn"><b>${h(p.player)}</b><small>${h(p.slot === "BE" ? "Bench" : p.slot)} · ${h(p.positions)} · ${h(p.nba_team)}</small></span>${p.status !== "Healthy" ? `<span class="badge">${p.status === "DTD" ? "DTD" : "OUT"}</span>` : ""}</div><div class="pstats"><div><b>${n1(p.avg)}</b><span>Avg</span></div><div><b>${n1(p.l5)}</b><span>Last 5</span></div><div><b class="${d >= 0.05 ? "pos" : d <= -0.05 ? "neg" : ""}">${signed(d, n1)}</b><span>vs proj</span></div><div><b>${n0(wk)}</b><span>This wk</span></div></div><div class="pnext">${h(nextGames(p))}</div></button>`; };
+  const act = rs.filter(p => p.slot !== "IR"), ir = rs.filter(p => p.slot === "IR");
+  return `<div class="pgrid">${act.map(card).join("")}</div>${ir.length ? `<details><summary><b>Injured reserve (${ir.length})</b> <span class="dim">${ir.map(p => h(p.player)).join(", ")}</span></summary><div class="pgrid" style="margin-top:8px">${ir.map(card).join("")}</div></details>` : ""}`;
+}
+function next7(id) {
+  const m = S.m, days = []; for (let d = m.today_day; d < m.today_day + 7; d++) days.push(d);
+  const rs = S.roster(id).filter(p => p.slot !== "IR").sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot) || b.ev - a.ev);
+  const starts = days.map(d => bestLineup(rs.filter(p => S.plays(p, d)).map(p => item(p))).count), playing = days.map(d => rs.filter(p => p.avail > 0 && S.plays(p, d)).length);
+  return `<div class="wrap"><table class="t pin n7"><thead><tr><th>Player</th>${days.map(d => `<th class="${d === m.today_day ? "tcol" : ""}">${d === m.today_day ? "Today" : h(dayLabel(isoOf(d)))}</th>`).join("")}</tr></thead><tbody>${rs.map(p => `<tr><td><div class="pc"><span class="dot" style="background:${(NBA[p.nba_team] || ["#666"])[0]}"></span><button class="link" data-p="${p.player_id}">${h(p.player)}</button>${statusTag(p)}</div></td>${days.map(d => { const g = S.plays(p, d); return `<td class="${d === m.today_day ? "tcol" : ""}">${g ? (g.home ? "vs " : "@") + h(g.opp) : `<span class="dim">·</span>`}</td>`; }).join("")}</tr>`).join("")}<tr class="tot"><td>Starts (of 10)</td>${days.map((d, i) => `<td class="${d === m.today_day ? "tcol" : ""}"><b>${starts[i]}</b>${playing[i] > 10 ? ` <span class="dim">+${playing[i] - 10} sit</span>` : ""}</td>`).join("")}</tr></tbody></table></div>`;
+}
+function seasonSchedule(id) {
+  const rows = S.matchups.filter(x => x.team_id === id && x.week <= S.m.regular_weeks).sort((a, b) => a.week - b.week);
+  return `<div class="wrap"><table class="t"><thead><tr><th class="n">Wk</th><th>Dates</th><th>Opponent</th><th class="n">Result</th></tr></thead><tbody>${rows.map(x => { const done = x.week < S.m.week, live = x.week === S.m.week; return `<tr class="${live ? "me" : ""}"><td class="n">${x.week}</td><td>${h(weekSpan(x.week))}</td><td style="max-width:38vw"><div class="pc"><button class="link" data-team="${x.opp_id}">${tName(x.opp_id)}</button></div></td><td class="n">${done ? `<span class="${x.pts > x.opp_pts ? "up" : "down"}">${x.pts > x.opp_pts ? "W" : "L"}</span> ${n0(x.pts)}–${n0(x.opp_pts)}` : live ? `${n0(x.pts)}–${n0(x.opp_pts)} <span class="dim">live</span>` : `<span class="dim">–</span>`}</td></tr>`; }).join("")}</tbody></table></div>`;
+}
+function teamMoves(id) {
+  const ev = {}; S.activity.forEach(a => (ev[a.event] = ev[a.event] || []).push(a));
+  const list = Object.values(ev).filter(e => e.some(a => [a.team_id, a.from_id, a.to_id].includes(id))).sort((a, b) => b[0].time.localeCompare(a[0].time)).slice(0, 8);
+  const when = t => new Date(t).toLocaleString("en-US", { timeZone: "America/Toronto", month: "short", day: "numeric" });
+  return list.length ? `<div class="wrap"><table class="t"><thead><tr><th>When</th><th>Move</th></tr></thead><tbody>${list.map(e => `<tr><td class="dim">${h(when(e[0].time))}</td><td style="white-space:normal">${e.map(a => a.kind === "Trade" ? `<b>${h(a.player)}</b> <span class="dim">${h(S.T[a.from_id]?.abbrev ?? "?")} → ${h(S.T[a.to_id]?.abbrev ?? "?")}</span>` : `<span class="${a.kind.startsWith("Add") ? "up" : "down"}">${a.kind.startsWith("Add") ? "Add" : "Drop"}</span> <b>${h(a.player)}</b>`).join("<br>")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="note" style="margin:0">No moves yet.</p>`;
+}
+
 function teamPage(id) {
-  const t = S.T[id], d = S.D[id] || {}, mu = S.matchups.find(x => x.week === S.m.week && x.home && (x.team_id === id || x.opp_id === id));
-  const rs = S.roster(id), idle = rs.filter(p => !["BE", "IR"].includes(p.slot) && !S.plays(p, S.m.today_day)), ready = rs.filter(p => p.slot === "BE" && p.avail > 0 && S.plays(p, S.m.today_day));
-  const tile = (k, v, s = "") => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
-  return `<div class="tiles">${tile("Record", `${t.wins}-${t.losses}`, `${n0(t.points_for)} points for`)}${tile("Power rank", "#" + (d.power_rank ?? "–"), `rating ${n0(d.rating)} a week`)}${tile("Playoffs", pct(d.playoff), `title ${pct(d.title)}`)}${tile("Adds this week", `${d.adds_used ?? 0}/${ADD_LIMIT}`, `${Math.max(0, ADD_LIMIT - (d.adds_used ?? 0))} left`)}${tile("Luck", signed(d.luck_adj ?? 0), "pts vs league average")}</div>
-  <h2>Week ${S.m.week} matchup</h2>${mu ? matchupCard(mu, true) : `<p class="note">No matchup this week.</p>`}
-  <h2>Roster</h2><div class="card">${rosterTable(id)}${idle.length && ready.length ? `<p class="warnline">${ready.length} bench player${ready.length > 1 ? "s" : ""} (${ready.map(p => h(p.player)).join(", ")}) play${ready.length > 1 ? "" : "s"} today while ${idle.length} starter${idle.length > 1 ? "s" : ""} (${idle.map(p => h(p.player)).join(", ")}) ${idle.length > 1 ? "have" : "has"} no game.</p>` : ""}</div>`;
+  const t = S.T[id], d = S.D[id] || {}, m = S.m, mu = S.matchups.find(x => x.week === m.week && x.team_id === id);
+  const rs = S.roster(id), idle = rs.filter(p => !["BE", "IR"].includes(p.slot) && !S.plays(p, m.today_day)), ready = rs.filter(p => p.slot === "BE" && p.avail > 0 && S.plays(p, m.today_day));
+  const opp = mu?.opp_id, od = S.D[opp] || {}, diff = mu ? mu.pts - mu.opp_pts : 0;
+  const standing = S.teams.slice().sort((a, b) => b.wins - a.wins || b.points_for - a.points_for).findIndex(x => x.team_id === id) + 1;
+  const startsLeft = tid => { let n = 0; for (let x = m.today_day; x <= m.week_end_day; x++) n += bestLineup(S.roster(tid).filter(p => S.plays(p, x)).map(p => item(p))).count; return n; };
+  const st = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
+  const hero = `<section class="hero" id="s-over"><div class="herotop"><div><h2 class="big">${h(t.team)}</h2><div class="dim">Manager: ${h(t.manager)}</div></div>${mu ? `<div class="heroscore"><div class="dim">Week ${m.week} vs ${tName(opp)}</div><div class="score">${n0(mu.pts)} – ${n0(mu.opp_pts)}</div><div class="${diff >= 0 ? "pos" : "neg"}">${diff === 0 ? "Level" : (diff > 0 ? "Leading by " : "Trailing by ") + n0(Math.abs(diff))}</div></div>` : ""}</div>
+  <div class="herostats">${mu ? st(`${n0(d.proj_final)}–${n0(od.proj_final)}`, "Projected final") + st(pct(d.win_prob), "Win chance") + st(`${startsLeft(id)}–${startsLeft(opp)}`, "Starts left") : ""}${st(`${t.wins}-${t.losses}`, "Record")}${st("#" + standing, "Standing")}${st(pct(d.playoff), "Playoff odds")}${st(pct(d.title), "Title odds")}${st("#" + (d.power_rank ?? "–"), "Power rank")}${st(`${d.adds_used ?? 0}/${ADD_LIMIT}`, "Adds used")}${st(signed(d.luck_adj ?? 0), "Luck (pts)")}${st(n0(t.points_for), "Season points")}</div></section>`;
+  const jump = `<div class="jump">${[["s-over", "Overview"], ["s-mu", "This week's matchup"], ["s-roster", "Roster"], ["s-next", "Next 7 days"], ["s-season", "Schedule and moves"]].map(([a, l]) => `<button data-jump="${a}">${l}</button>`).join("")}</div>`;
+  const wp = d.win_prob ?? 0.5;
+  const matchup = mu ? `<div class="card"><div class="legend"><span><span class="key" style="background:var(--me)"></span>${tName(id)}</span><span><span class="key" style="background:var(--opp)"></span>${tName(opp)}</span><span class="dim">Pale and dashed = projected</span></div><h3>Points by day</h3>${weekBars(id, opp)}<h3>Running total</h3>${runningTotal(id, opp)}<div class="prob"><i style="width:${wp * 100}%"></i><i style="width:${(1 - wp) * 100}%"></i></div><div class="problabel"><span>${h(t.abbrev)} wins ${pct(wp)}</span><span>${pct(1 - wp)} ${h(S.T[opp].abbrev)}</span></div><details><summary>Show as a table</summary>${dayRows(id, opp)}</details></div>` : `<p class="note">No matchup this week.</p>`;
+  return `${jump}${hero}<h2 id="s-mu">This week's matchup</h2>${matchup}
+  <h2 id="s-roster">Roster</h2><div class="card"><div class="controls"><div class="seg"><button data-set="rv=cards" aria-pressed="${ui.rv === "cards"}">Cards</button><button data-set="rv=table" aria-pressed="${ui.rv === "table"}">Table</button></div></div>${ui.rv === "cards" ? rosterCards(id) : rosterTable(id)}${idle.length && ready.length ? `<p class="warnline">${ready.length} bench player${ready.length > 1 ? "s" : ""} (${ready.map(p => h(p.player)).join(", ")}) play${ready.length > 1 ? "" : "s"} today while ${idle.length} starter${idle.length > 1 ? "s" : ""} (${idle.map(p => h(p.player)).join(", ")}) ${idle.length > 1 ? "have" : "has"} no game.</p>` : ""}<p class="note" style="margin-bottom:0">"vs proj" is his season average minus ESPN's preseason projection. "This wk" counts only points scored in a starting slot. Tap a player for his game log.</p></div>
+  <h2 id="s-next">Next 7 days</h2><div class="card">${next7(id)}</div>
+  <h2 id="s-season">Schedule and moves</h2><div class="grid"><div class="card"><h3>Matchup schedule</h3>${seasonSchedule(id)}</div><div class="card"><h3>Recent moves</h3>${teamMoves(id)}</div></div>`;
 }
 
 /* ---------- views ---------- */
@@ -243,6 +309,7 @@ document.addEventListener("click", e => {
   let el;
   if ((el = g("[data-close]")) || t === $("#sheet")) return $("#sheet").close();
   if ((el = g("[data-p]"))) return openPlayer(+el.dataset.p);
+  if ((el = g("[data-jump]"))) { const tg = document.getElementById(el.dataset.jump); if (tg) scrollTo({ top: tg.getBoundingClientRect().top + scrollY - $("header").offsetHeight - 8, behavior: "smooth" }); return; }
   if ((el = g("[data-tab]"))) { ui.tab = el.dataset.tab; history.replaceState(null, "", "#" + ui.tab); return render(); }
   if ((el = g("[data-team]"))) { ui.team = +el.dataset.team; ui.tab = "teams"; history.replaceState(null, "", "#teams"); return render(); }
   if ((el = g("th[data-k]"))) { const id = el.closest("table").dataset.table; if (!id) return; const cur = ui.sort[id]; ui.sort[id] = { k: el.dataset.k, dir: cur?.k === el.dataset.k ? -cur.dir : (el.classList.contains("n") ? -1 : 1) }; return render(true); }
