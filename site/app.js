@@ -343,6 +343,7 @@ function lastGames(td, games, n, marks) {
   });
   ms.filter(mk => !mk.done && shown.length).forEach(mk => w.append(bar(mk)));
   if (!games.length) w.append(txt('i', 'no games', 'ng'));
+  if (shown.length) td.dataset.sort = d3.median(shown, g => g.fpts);
   td.append(w); return td;
 }
 let GBY = null;
@@ -863,14 +864,14 @@ function drawStream() {
     return { p, gain, fills, g, days: ds.join(' '), spike: p.games_played >= 4 && last && last.fpts >= 1.6 * p.avg && last.fpts >= 30, capped: p.positions.split(',').includes('C') && centers >= CENTER_MAX, min_l5: (rkm.get(p.player_id) || {}).min_l5 };
   }).filter(r => r.g > 0).sort((a, b) => b.gain - a.gain || val(b.p) - val(a.p)).slice(0, 40);
   const bh = $('#st-best'); bh.replaceChildren();
-  { const { table, tbody } = makeTable([['player', 'Player'], ['gain', '+Pts', 'num', 'Points added to your lineup over the window'], ['fills', 'Open-day games', 'num'], ['games', 'Games', 'num'], ['days', 'Days'], ['exp', 'Exp/gm', 'num'], ['avg', 'Avg', 'num'], ['med5', 'Med 5', 'num'], ['min_l5', 'Min last 5', 'num'], ['own', 'Own %', 'num']]);
+  { const { table, tbody } = makeTable([['player', 'Player'], ['gain', '+Pts', 'num', 'Points added to your lineup over the window'], ['fills', 'Open-day games', 'num'], ['games', 'Games', 'num'], ['days', 'Days'], ['exp', 'Exp/gm', 'num'], ['avg', 'Avg', 'num'], ['med5', 'Med 5', 'num'], ['last5', 'Last 5 games (pts / min)', '', 'Oldest to newest: points on top, minutes underneath. Sorts by the median.'], ['own', 'Own %', 'num']]);
     table.classList.add('fx-click');
     fa.forEach(r => {
       const tr = document.createElement('tr'); tr.dataset.pid = r.p.player_id; if (r.capped) tr.className = 'climit';
       const sub = txt('span', null, 'sub'); sub.append(r.p.positions + ' · ' + r.p.nba_team + (r.p.fantasy_team === 'Waivers' ? ' · waivers' : ''));
       if (r.spike) sub.append(txt('span', 'Spike', 'fx-tag spike')); if (r.capped) sub.append(txt('span', 'C limit', 'fx-tag'));
       tr.append(nameCell(r.p.player, r.p.nba_team, r.p.status, sub), txt('td', '+' + Math.round(r.gain), 'num'), txt('td', String(r.fills), 'num'), txt('td', String(r.g), 'num'), txt('td', r.days, 'muted'),
-        txt('td', dash0(r1(val(r.p))), 'num'), txt('td', dash0(r.p.avg), 'num'), txt('td', dash0(r1(med5(r.p.player_id))), 'num'), txt('td', dash0(r.min_l5), 'num'), txt('td', dash0(r.p.pct_owned), 'num'));
+        txt('td', dash0(r1(val(r.p))), 'num'), txt('td', dash0(r.p.avg), 'num'), txt('td', dash0(r1(med5(r.p.player_id))), 'num'), lastGames(txt('td'), gamesOf(r.p.player_id), 5), txt('td', dash0(r.p.pct_owned), 'num'));
       tbody.append(tr);
     });
     table.addEventListener('click', e => { if (e.target.closest('.fx-inline')) return; const tr = e.target.closest('tbody tr[data-pid]'); if (tr) openPlayer(Number(tr.dataset.pid), tr); });
@@ -884,11 +885,11 @@ function drawStream() {
     return { p, keep, starts, g, own: (pool.get(p.player_id) || {}).pct_owned };
   }).sort((a, b) => a.keep - b.keep);
   const xh = $('#st-drop'); xh.replaceChildren();
-  { const { table, tbody } = makeTable([['player', 'Player'], ['keep', 'Pts he\'d add', 'num'], ['starts', 'Games he\'d start', 'num'], ['games', 'Games', 'num'], ['exp', 'Exp/gm', 'num'], ['med5', 'Med 5', 'num'], ['own', 'Own %', 'num']]);
+  { const { table, tbody } = makeTable([['player', 'Player'], ['keep', 'Pts he\'d add', 'num'], ['starts', 'Games he\'d start', 'num'], ['games', 'Games', 'num'], ['exp', 'Exp/gm', 'num'], ['med5', 'Med 5', 'num'], ['last5', 'Last 5 games (pts / min)', '', 'Oldest to newest: points on top, minutes underneath. Sorts by the median.'], ['own', 'Own %', 'num']]);
     table.classList.add('fx-click');
     drops.forEach(r => { const tr = document.createElement('tr'); tr.dataset.pid = r.p.player_id;
       tr.append(nameCell(r.p.player, r.p.nba_team, r.p.status, (r.p.slot === 'BE' ? 'Bench' : r.p.slot) + ' · ' + r.p.positions + ' · ' + r.p.nba_team), txt('td', String(Math.round(r.keep)), 'num'), txt('td', String(r.starts), 'num'), txt('td', String(r.g), 'num'),
-        txt('td', dash0(r1(val(r.p))), 'num'), txt('td', dash0(r1(med5(r.p.player_id))), 'num'), txt('td', dash0(r.own), 'num' + (r.own >= 50 ? ' amber' : ''))); tbody.append(tr); });
+        txt('td', dash0(r1(val(r.p))), 'num'), txt('td', dash0(r1(med5(r.p.player_id))), 'num'), lastGames(txt('td'), gamesOf(r.p.player_id), 5), txt('td', dash0(r.own), 'num' + (r.own >= 50 ? ' amber' : ''))); tbody.append(tr); });
     table.addEventListener('click', e => { if (e.target.closest('.fx-inline')) return; const tr = e.target.closest('tbody tr[data-pid]'); if (tr) openPlayer(Number(tr.dataset.pid), tr); });
     xh.append(table); }
 
@@ -1012,9 +1013,9 @@ $('#pl-q').addEventListener('input', () => { plQ = $('#pl-q').value; drawPlayers
 $('#pl-pos').addEventListener('change', () => setParams({ pos: $('#pl-pos').value || null }));
 $('#pl-owner').addEventListener('change', () => setParams({ owner: $('#pl-owner').value }));
 const RK_COLS = [['rank', '#', 'num'], ['player', 'Player'], ['fantasy_team', 'Fantasy team'], ['nba_team', 'NBA'], ['positions', 'Pos'], ['status', 'Status'], ['games_played', 'GP', 'num'], ['total_pts', 'Total', 'num'],
-  ['avg', 'Avg', 'num'], ['med5', 'Med 5', 'num'], ['proj_avg', 'Proj avg', 'num'], ['exp', 'Exp', 'num'], ['diff_avg', '+/− per game', 'num'], ['last_fpts', 'Last', 'num'], ['last_diff', 'Last +/−', 'num'], '__days__',
+  ['avg', 'Avg', 'num'], ['med5', 'Med 5', 'num'], ['last5', 'Last 5 games (pts / min)'], ['proj_avg', 'Proj avg', 'num'], ['exp', 'Exp', 'num'], ['diff_avg', '+/− per game', 'num'], ['last_fpts', 'Last', 'num'], ['last_diff', 'Last +/−', 'num'], '__days__',
   ['pct_owned', 'Own %', 'num'], ['min', 'MIN', 'num'], ['min_l5', 'MIN last 5', 'num'], ['fpm', 'Pts/min', 'num'], ['pts', 'PTS', 'num'], ['reb', 'REB', 'num'], ['ast', 'AST', 'num'], ['stl', 'STL', 'num'], ['blk', 'BLK', 'num'], ['tpm', '3PM', 'num'], ['tov', 'TO', 'num'], ['fg_pct', 'FG%', 'num']];
-const sortVal = (r, f) => (f === 'diff_avg' ? r.diff_avg_n : (f.startsWith('d_') || f === 'last_diff') ? (r[f] === '' ? null : Number(String(r[f]).replace('−', '-'))) : r[f]);
+const sortVal = (r, f) => (f === 'last5' ? r.med5 : f === 'diff_avg' ? r.diff_avg_n : (f.startsWith('d_') || f === 'last_diff') ? (r[f] === '' ? null : Number(String(r[f]).replace('−', '-'))) : r[f]);
 $('#rankings').addEventListener('click', ev => {
   if (ev.target.closest('.fx-inline')) return;
   const th = ev.target.closest('th[data-field]');
@@ -1034,8 +1035,8 @@ function drawPlayers() {
   const base = playerList().filter(r => r.games_played >= 2 && r.diff_avg_n != null).sort((a, b) => b.diff_avg_n - a.diff_avg_n);
   [['hot', base.slice(0, 8)], ['cold', base.slice().reverse().slice(0, 8)]].forEach(([kind, list]) => {
     const host = $('#' + kind); host.replaceChildren();
-    const { table, tbody } = makeTable([['player', 'Player'], ['fantasy_team', 'Team'], ['avg', 'Avg', 'num'], ['proj_avg', 'Proj', 'num'], ['diff_avg', '+/−', 'num']]); table.classList.add('fx-click');
-    list.forEach(r => { const tr = document.createElement('tr'); tr.dataset.pid = r.player_id; tr.append(nameCell(r.player, r.nba_team, r.status), teamCell(r.team_id ? r.fantasy_team : (r.fantasy_team === 'Waivers' ? 'Waivers' : 'Free agent'), r.team_id), txt('td', String(r.avg), 'num'), txt('td', String(r.proj_avg), 'num'), txt('td', r.diff_avg, 'num ' + tone(r.diff_avg))); tbody.append(tr); });
+    const { table, tbody } = makeTable([['player', 'Player'], ['fantasy_team', 'Team'], ['avg', 'Avg', 'num'], ['proj_avg', 'Proj', 'num'], ['diff_avg', '+/−', 'num'], ['last5', 'Last 5 games (pts / min)', '', 'Oldest to newest: points on top, minutes underneath. Sorts by the median.']]); table.classList.add('fx-click');
+    list.forEach(r => { const tr = document.createElement('tr'); tr.dataset.pid = r.player_id; tr.append(nameCell(r.player, r.nba_team, r.status), teamCell(r.team_id ? r.fantasy_team : (r.fantasy_team === 'Waivers' ? 'Waivers' : 'Free agent'), r.team_id), txt('td', String(r.avg), 'num'), txt('td', String(r.proj_avg), 'num'), txt('td', r.diff_avg, 'num ' + tone(r.diff_avg)), lastGames(txt('td'), gamesOf(r.player_id), 5)); tbody.append(tr); });
     const w = txt('div', null, 'fx-tbl-wrap'); w.append(table); host.append(w);
     if (!list.length) host.append(txt('p', 'Nobody with 2+ games matches these filters.', 'fx-note'));
   });
@@ -1054,6 +1055,7 @@ function drawPlayers() {
       if (fld === 'diff_avg' || fld === 'last_diff' || fld.startsWith('d_')) c += ' ' + tone(v);
       if (fld === 'status') c += v === 'OUT' ? ' bad' : v === 'DTD' ? ' warn' : ' muted';
       if (fld === 'player') tr.append(nameCell(r.player, r.nba_team, r.status));
+      else if (fld === 'last5') tr.append(lastGames(txt('td'), gamesOf(r.player_id), 5));
       else if (fld === 'fantasy_team') tr.append(teamCell(r.team_id ? r.fantasy_team : r.fantasy_team === 'Waivers' ? 'Waivers' : 'Free agent', r.team_id));
       else tr.append(txt('td', v == null ? '' : String(v), c));
     });
@@ -1120,8 +1122,8 @@ function drawTrends() {
   if (own.length < 2) { rh.append(txt('p', 'Needs two days of ownership history; this fills in after tomorrow\'s first update.', 'fx-note')); return; }
   const a = HIST.owned[own[Math.max(0, own.length - 4)]], b = HIST.owned[own[own.length - 1]];
   const rs = rows('player_pool').filter(p => !p.team_id && b[p.player_id] != null).map(p => ({ p, ch: b[p.player_id] - (a[p.player_id] ?? 0) })).sort((x2, y2) => y2.ch - x2.ch).slice(0, 12);
-  const { table, tbody } = makeTable([['player', 'Player'], ['own', 'Own %', 'num'], ['ch', 'Change', 'num'], ['avg', 'Avg', 'num'], ['med5', 'Med 5', 'num'], ['exp', 'Exp', 'num']]); table.classList.add('fx-click');
-  rs.forEach(r => { const tr = document.createElement('tr'); tr.dataset.pid = r.p.player_id; tr.append(nameCell(r.p.player, r.p.nba_team, r.p.status, r.p.positions + ' · ' + r.p.nba_team), txt('td', dash0(r.p.pct_owned), 'num'), txt('td', (r.ch >= 0 ? '+' : '−') + Math.abs(r.ch).toFixed(1), 'num ' + (r.ch > 0 ? 'up' : r.ch < 0 ? 'down' : '')), txt('td', dash0(r.p.avg), 'num'), txt('td', dash0(r1(med5(r.p.player_id))), 'num'), txt('td', dash0(r1(val(r.p))), 'num')); tbody.append(tr); });
+  const { table, tbody } = makeTable([['player', 'Player'], ['own', 'Own %', 'num'], ['ch', 'Change', 'num'], ['avg', 'Avg', 'num'], ['med5', 'Med 5', 'num'], ['last5', 'Last 5 games (pts / min)', '', 'Oldest to newest: points on top, minutes underneath. Sorts by the median.'], ['exp', 'Exp', 'num']]); table.classList.add('fx-click');
+  rs.forEach(r => { const tr = document.createElement('tr'); tr.dataset.pid = r.p.player_id; tr.append(nameCell(r.p.player, r.p.nba_team, r.p.status, r.p.positions + ' · ' + r.p.nba_team), txt('td', dash0(r.p.pct_owned), 'num'), txt('td', (r.ch >= 0 ? '+' : '−') + Math.abs(r.ch).toFixed(1), 'num ' + (r.ch > 0 ? 'up' : r.ch < 0 ? 'down' : '')), txt('td', dash0(r.p.avg), 'num'), txt('td', dash0(r1(med5(r.p.player_id))), 'num'), lastGames(txt('td'), gamesOf(r.p.player_id), 5), txt('td', dash0(r1(val(r.p))), 'num')); tbody.append(tr); });
   table.addEventListener('click', e => { if (e.target.closest('.fx-inline')) return; const tr = e.target.closest('tbody tr[data-pid]'); if (tr) openPlayer(Number(tr.dataset.pid), tr); });
   rh.append(table);
 }
@@ -1130,7 +1132,7 @@ function drawTrends() {
 const SORTS = new Map();
 const hdrRow = t => t.tHead.rows[t.tHead.rows.length - 1];
 const tblKey = t => ((t.closest('[id]') || {}).id || '') + '|' + [...hdrRow(t).cells].map(c => c.dataset.field).join(',');
-const cellVal = td => { const s = (td ? td.textContent : '').trim(); if (!s || s === '–' || s === '—' || s === '·') return null; const n = s.replace(/,/g, '').replace(/^#/, '').replace(/^−/, '-').replace(/^\+/, '').replace(/ .*$/, ''); return /^-?\d+(\.\d+)?%?$/.test(n) ? parseFloat(n) : s.toLowerCase(); };
+const cellVal = td => { if (td && td.dataset.sort != null) return Number(td.dataset.sort); const s = (td ? td.textContent : '').trim(); if (!s || s === '–' || s === '—' || s === '·') return null; const n = s.replace(/,/g, '').replace(/^#/, '').replace(/^−/, '-').replace(/^\+/, '').replace(/ .*$/, ''); return /^-?\d+(\.\d+)?%?$/.test(n) ? parseFloat(n) : s.toLowerCase(); };
 const ORDERED = new Set(['when', 'dates']);
 function sortTable(t, f, dir) {
   const tb = t.tBodies[0]; if (!tb) return;
